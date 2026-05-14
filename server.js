@@ -38,9 +38,9 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "Internal server error.", details: process.env.NODE_ENV === "development" ? err.message : undefined });
 });
 
-app.listen(PORT, () => {
-  console.log(`\n🚀 Team Task Manager running on http://localhost:${PORT}`);
-  console.log(`📊 API: http://localhost:${PORT}/api/health\n`);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`\n🚀 Team Task Manager running on http://0.0.0.0:${PORT}`);
+  console.log(`📊 API: http://0.0.0.0:${PORT}/api/health\n`);
 });
 
 module.exports = app;
