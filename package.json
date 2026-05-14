@@ -1,9 +1,0 @@
-{
-  "name": "team-task-manager",
-  "version": "1.0.0",
-  "description": "Python Backend Migration",
-  "scripts": {
-    "start": ".\\venv\\Scripts\\uvicorn main:app --port 3000",
-    "dev": ".\\venv\\Scripts\\uvicorn main:app --port 3000 --reload"
-  }
-}
