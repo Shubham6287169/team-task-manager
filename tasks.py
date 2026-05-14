@@ -39,7 +39,7 @@ def check_membership(project_id: int, user_id: int, user_role: str, db):
         (project_id, user_id)
     ).fetchone()
 
-@router.get("/")
+@router.get("")
 def get_tasks(
     project_id: Optional[int] = None,
     status: Optional[str] = None,
@@ -184,7 +184,7 @@ def get_task(task_id: int, current_user: dict = Depends(get_current_user), db=De
     task_dict["comments"] = [dict(c) for c in comments]
     return task_dict
 
-@router.post("/", status_code=201)
+@router.post("", status_code=201)
 def create_task(task: TaskCreate, current_user: dict = Depends(get_current_user), db=Depends(get_db)):
     if len(task.title) < 2 or len(task.title) > 300:
         raise HTTPException(status_code=400, detail="Title must be 2–300 characters.")

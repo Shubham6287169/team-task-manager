@@ -54,7 +54,7 @@ def get_project_with_stats(project_id: int, user_id: int, user_role: str, db):
         
     return project_dict
 
-@router.get("/")
+@router.get("")
 def get_projects(current_user: dict = Depends(get_current_user), db=Depends(get_db)):
     if current_user["role"] == "admin":
         projects = db.execute("""
@@ -83,7 +83,7 @@ def get_projects(current_user: dict = Depends(get_current_user), db=Depends(get_
         
     return [dict(p) for p in projects]
 
-@router.post("/", status_code=201)
+@router.post("", status_code=201)
 def create_project(project: ProjectCreate, current_user: dict = Depends(get_current_user), db=Depends(get_db)):
     if len(project.name) < 2 or len(project.name) > 200:
         raise HTTPException(status_code=400, detail="Project name must be 2–200 characters.")
