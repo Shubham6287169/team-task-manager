@@ -1,10 +1,10 @@
 import os
+import bcrypt
 import jwt
 from datetime import datetime, timedelta
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Header
+from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel, EmailStr
-from passlib.context import CryptContext
 from database import get_db
 
 # Constants
@@ -12,8 +12,7 @@ JWT_SECRET = os.environ.get("JWT_SECRET", "team-task-manager-secret-key-2026")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_DAYS = 7
 
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Password hashing (bcrypt directly — passlib is incompatible with bcrypt 4.1+)
 
 # Routers
 router = APIRouter()
@@ -34,11 +33,22 @@ class ProfileUpdate(BaseModel):
     password: Optional[str] = None
 
 # Utils
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    if not hashed_password:
+        return False
+    try:
+        return bcrypt.checkpw(
+            plain_password.encode("utf-8"),
+            hashed_password.encode("utf-8"),
+        )
+    except ValueError:
+        return False
 
-def get_password_hash(password):
-    return pwd_context.hash(password)
+
+def get_password_hash(password: str) -> str:
+    # bcrypt rejects secrets longer than 72 bytes
+    pw = password.encode("utf-8")[:72]
+    return bcrypt.hashpw(pw, bcrypt.gensalt()).decode("utf-8")
 
 def create_access_token(data: dict):
     to_encode = data.copy()
