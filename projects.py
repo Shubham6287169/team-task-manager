@@ -20,6 +20,7 @@ class ProjectUpdate(BaseModel):
     description: Optional[str] = None
     status: Optional[str] = None
     deadline: Optional[str] = None
+    owner_id: Optional[int] = None
 
 class ProjectMember(BaseModel):
     user_id: int
@@ -152,6 +153,11 @@ def update_project(
     if project.deadline is not None:
         fields.append("deadline = ?")
         values.append(project.deadline)
+    if project.owner_id is not None:
+        fields.append("owner_id = ?")
+        values.append(project.owner_id)
+        # also add them as admin member if not already
+        db.execute("INSERT OR IGNORE INTO project_members (project_id, user_id, role) VALUES (?, ?, 'admin')", (project_id, project.owner_id))
         
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update.")

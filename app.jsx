@@ -411,14 +411,22 @@ function Dashboard({ setPage, setProjectId }) {
 // ── Projects Page ─────────────────────────────────────────────────
 function ProjectsPage({ onOpenProject }) {
   const [projects, setProjects] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name:'', description:'', deadline:'' });
   const [saving, setSaving] = useState(false);
+  const [quickAddMemberProject, setQuickAddMemberProject] = useState(null);
+  const [memberForm, setMemberForm] = useState({ user_id:'', role:'member' });
   const { user, showToast } = useAuth();
   const set = k => e => setForm(f=>({...f,[k]:e.target.value}));
 
-  const load = () => apiFetch('/projects').then(setProjects).finally(()=>setLoading(false));
+  const load = () => {
+    Promise.all([
+      apiFetch('/projects'),
+      user.role === 'admin' ? apiFetch('/auth/users').catch(()=>[]) : Promise.resolve([])
+    ]).then(([p, u]) => { setProjects(p); setAllUsers(u); }).finally(()=>setLoading(false));
+  };
   useEffect(()=>{ load(); }, []);
 
   const createProject = async e => {
@@ -427,6 +435,27 @@ function ProjectsPage({ onOpenProject }) {
       await apiFetch('/projects', { method:'POST', body:form });
       showToast('Project created!', 'success');
       setShowCreate(false); setForm({ name:'', description:'', deadline:'' }); load();
+    } catch(err) { showToast(err.message, 'error'); } finally { setSaving(false); }
+  };
+
+  const deleteProject = async (e, id) => {
+    e.stopPropagation();
+    if (!confirm('Are you sure you want to delete this project?')) return;
+    try { await apiFetch(`/projects/${id}`, { method:'DELETE' }); load(); showToast('Project deleted.'); }
+    catch(err) { showToast(err.message, 'error'); }
+  };
+
+  const assignProjectOwner = async (e, projectId, ownerId) => {
+    e.stopPropagation();
+    try { await apiFetch(`/projects/${projectId}`, { method:'PUT', body:{ owner_id: Number(ownerId) } }); load(); showToast('Project owner assigned.'); }
+    catch(err) { showToast(err.message, 'error'); }
+  };
+
+  const submitQuickAddMember = async e => {
+    e.preventDefault(); setSaving(true);
+    try {
+      await apiFetch(`/projects/${quickAddMemberProject}/members`, { method:'POST', body:memberForm });
+      showToast('Member added!', 'success'); setQuickAddMemberProject(null); load();
     } catch(err) { showToast(err.message, 'error'); } finally { setSaving(false); }
   };
 
@@ -455,11 +484,15 @@ function ProjectsPage({ onOpenProject }) {
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(300px, 1fr))', gap:16 }}>
           {projects.map(p => {
             const pct = p.total_tasks ? Math.round(p.done_tasks/p.total_tasks*100) : 0;
+            const isOverdue = p.deadline && new Date(p.deadline) < new Date(new Date().setHours(0,0,0,0)) && p.status !== 'completed';
             return (
               <Card key={p.id} style={{ cursor:'pointer', transition:'border-color .15s, transform .15s', ':hover':{ borderColor:'var(--accent)' } }} onClick={()=>onOpenProject(p.id)}>
                 <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:12 }}>
                   <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:16, fontWeight:700, marginBottom:3 }}>{p.name}</div>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:3 }}>
+                      <div style={{ fontSize:16, fontWeight:700 }}>{p.name}</div>
+                      {isOverdue && <Badge label="Overdue" color="red" />}
+                    </div>
                     <div style={{ fontSize:12, color:'var(--text-3)', display:'flex', alignItems:'center', gap:6 }}>
                       <span style={{ width:6, height:6, borderRadius:'50%', background:statusColor(p.status), display:'inline-block' }} />
                       <span style={{ textTransform:'capitalize' }}>{p.status}</span>
@@ -468,6 +501,18 @@ function ProjectsPage({ onOpenProject }) {
                   <Badge label={p.my_role||'admin'} color={p.my_role==='admin'?'accent':'default'} />
                 </div>
                 {p.description && <p style={{ fontSize:13, color:'var(--text-2)', marginBottom:14, lineHeight:1.5, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{p.description}</p>}
+                
+                {user.role === 'admin' && (
+                  <div style={{ display:'flex', gap:6, marginBottom:14, flexWrap:'wrap' }} onClick={e=>e.stopPropagation()}>
+                    <select value={p.owner_id} onChange={e=>assignProjectOwner(e, p.id, e.target.value)} style={{ padding:'2px 4px', fontSize:11, borderRadius:4, border:'1px solid var(--border)', background:'var(--surface3)' }}>
+                      <option disabled>Assign Project to:</option>
+                      {allUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
+                    </select>
+                    <button onClick={e=>{e.stopPropagation(); setQuickAddMemberProject(p.id); setMemberForm({ user_id:'', role:'member' });}} style={{ padding:'2px 8px', fontSize:11, borderRadius:4, border:'1px solid var(--border)', background:'var(--surface3)', cursor:'pointer' }}>＋ Manage Members</button>
+                    <button onClick={e=>deleteProject(e, p.id)} style={{ padding:'2px 8px', fontSize:11, borderRadius:4, border:'1px solid var(--danger)', background:'transparent', color:'var(--danger)', cursor:'pointer', marginLeft:'auto' }}>✕ Delete</button>
+                  </div>
+                )}
+
                 <div style={{ marginBottom:14 }}>
                   <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6, fontSize:12, color:'var(--text-2)' }}>
                     <span>Progress</span>
@@ -499,6 +544,28 @@ function ProjectsPage({ onOpenProject }) {
           </div>
         </form>
       </Modal>
+
+      {/* Quick Add Member Modal */}
+      <Modal open={!!quickAddMemberProject} onClose={()=>setQuickAddMemberProject(null)} title="Manage Project Member">
+        <form onSubmit={submitQuickAddMember}>
+          <Field label="Select User">
+            <select value={memberForm.user_id} onChange={e=>setMemberForm(f=>({...f,user_id:e.target.value}))} required>
+              <option value="">-- Choose User --</option>
+              {allUsers.map(u=><option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
+            </select>
+          </Field>
+          <Field label="Role">
+            <select value={memberForm.role} onChange={e=>setMemberForm(f=>({...f,role:e.target.value}))}>
+              <option value="member">Member</option>
+              <option value="admin">Admin</option>
+            </select>
+          </Field>
+          <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
+            <Btn variant="ghost" type="button" onClick={()=>setQuickAddMemberProject(null)}>Cancel</Btn>
+            <Btn loading={saving}>Add Member</Btn>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }
@@ -513,6 +580,7 @@ function ProjectDetail({ projectId, onBack }) {
   const [showAddTask, setShowAddTask] = useState(false);
   const [showAddMember, setShowAddMember] = useState(false);
   const [showEditProject, setShowEditProject] = useState(false);
+  const [editProjectForm, setEditProjectForm] = useState({ name:'', description:'', status:'', deadline:'' });
   const [taskForm, setTaskForm] = useState({ title:'', description:'', assignee_id:'', priority:'medium', status:'todo', due_date:'' });
   const [memberForm, setMemberForm] = useState({ user_id:'', role:'member' });
   const [saving, setSaving] = useState(false);
@@ -528,6 +596,7 @@ function ProjectDetail({ projectId, onBack }) {
         apiFetch('/auth/users'),
       ]);
       setProject(proj); setTasks(taskList); setAllUsers(users);
+      setEditProjectForm({ name:proj.name, description:proj.description||'', status:proj.status, deadline:proj.deadline||'' });
     } catch(e) { showToast(e.message, 'error'); } finally { setLoading(false); }
   };
 
@@ -563,14 +632,34 @@ function ProjectDetail({ projectId, onBack }) {
     catch(e) { showToast(e.message, 'error'); }
   };
 
+  const updateTaskAssignee = async (taskId, assignee_id) => {
+    try { await apiFetch(`/tasks/${taskId}`, { method:'PUT', body:{ assignee_id: assignee_id ? Number(assignee_id) : null } }); load(); }
+    catch(e) { showToast(e.message, 'error'); }
+  };
+
   const deleteTask = async id => {
     if (!confirm('Delete this task?')) return;
     try { await apiFetch(`/tasks/${id}`, { method:'DELETE' }); load(); showToast('Task deleted.'); }
     catch(e) { showToast(e.message, 'error'); }
   };
 
+  const updateProject = async e => {
+    e.preventDefault(); setSaving(true);
+    try {
+      await apiFetch(`/projects/${projectId}`, { method:'PUT', body:editProjectForm });
+      showToast('Project updated!', 'success'); setShowEditProject(false); load();
+    } catch(e) { showToast(e.message, 'error'); } finally { setSaving(false); }
+  };
+
+  const deleteProject = async () => {
+    if (!confirm('Are you sure you want to delete this project? This cannot be undone.')) return;
+    try { await apiFetch(`/projects/${projectId}`, { method:'DELETE' }); onBack(); showToast('Project deleted.'); }
+    catch(e) { showToast(e.message, 'error'); }
+  };
+
   const setTf = k => e => setTaskForm(f=>({...f,[k]:e.target.value}));
   const setMf = k => e => setMemberForm(f=>({...f,[k]:e.target.value}));
+  const setEpf = k => e => setEditProjectForm(f=>({...f,[k]:e.target.value}));
 
   const filteredTasks = tasks.filter(t =>
     (!filterStatus || t.status===filterStatus) &&
@@ -584,6 +673,7 @@ function ProjectDetail({ projectId, onBack }) {
 
   const pct = project.total_tasks ? Math.round(project.done_tasks/project.total_tasks*100) : 0;
   const COLUMNS = ['todo','in_progress','review','done'];
+  const isOverdue = project.deadline && new Date(project.deadline) < new Date(new Date().setHours(0,0,0,0)) && project.status !== 'completed';
 
   return (
     <div style={{ padding:28, maxWidth:1200 }}>
@@ -591,10 +681,15 @@ function ProjectDetail({ projectId, onBack }) {
         <button onClick={onBack} style={{ background:'none', border:'none', color:'var(--text-2)', cursor:'pointer', fontSize:13, marginBottom:12, display:'flex', alignItems:'center', gap:6 }}>← Back to Projects</button>
         <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:16 }}>
           <div style={{ flex:1 }}>
-            <h1 style={{ fontSize:24, fontWeight:700, marginBottom:4 }}>{project.name}</h1>
+            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:4 }}>
+              <h1 style={{ fontSize:24, fontWeight:700 }}>{project.name}</h1>
+              {isOverdue && <Badge label="Overdue" color="red" />}
+            </div>
             {project.description && <p style={{ color:'var(--text-2)', fontSize:14 }}>{project.description}</p>}
           </div>
           <div style={{ display:'flex', gap:10, flexShrink:0 }}>
+            {canManage && <Btn size="sm" variant="danger" onClick={deleteProject}>Delete Project</Btn>}
+            {canManage && <Btn size="sm" variant="secondary" onClick={()=>setShowAddMember(true)}>＋ Assign Member</Btn>}
             {canManage && <Btn size="sm" variant="ghost" onClick={()=>setShowEditProject(true)}>✎ Edit</Btn>}
             <Btn size="sm" onClick={()=>setShowAddTask(true)}>＋ Task</Btn>
           </div>
@@ -668,12 +763,19 @@ function ProjectDetail({ projectId, onBack }) {
                   {t.description && <div style={{ fontSize:12, color:'var(--text-2)', marginTop:2, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{t.description}</div>}
                 </div>
                 {priorityBadge(t.priority)}
-                {t.assignee_name ? (
-                  <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
-                    <Avatar name={t.assignee_name} size={22} />
-                    <span style={{ fontSize:12, color:'var(--text-2)' }}>{t.assignee_name}</span>
-                  </div>
-                ) : <span style={{ fontSize:12, color:'var(--text-3)', flexShrink:0 }}>Unassigned</span>}
+                {canManage ? (
+                  <select value={t.assignee_id || ''} onChange={e=>updateTaskAssignee(t.id, e.target.value)} style={{ width:'auto', background:'var(--surface3)', border:'1px solid var(--border)', borderRadius:6, padding:'4px 8px', fontSize:12, cursor:'pointer' }}>
+                    <option value="">Unassigned</option>
+                    {(project.members||[]).map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+                  </select>
+                ) : (
+                  t.assignee_name ? (
+                    <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
+                      <Avatar name={t.assignee_name} size={22} />
+                      <span style={{ fontSize:12, color:'var(--text-2)' }}>{t.assignee_name}</span>
+                    </div>
+                  ) : <span style={{ fontSize:12, color:'var(--text-3)', flexShrink:0 }}>Unassigned</span>
+                )}
                 {t.due_date && <span style={{ fontSize:12, fontFamily:'Space Mono', color:new Date(t.due_date)<new Date()&&t.status!=='done'?'var(--danger)':'var(--text-2)', flexShrink:0 }}>{t.due_date}</span>}
                 {(canManage || t.creator_id===user.id) && (
                   <button onClick={()=>deleteTask(t.id)} style={{ background:'none', border:'none', color:'var(--text-3)', cursor:'pointer', fontSize:16, flexShrink:0, ':hover':{ color:'var(--danger)' } }}>✕</button>
@@ -703,7 +805,14 @@ function ProjectDetail({ projectId, onBack }) {
                       <div style={{ fontWeight:600, fontSize:13, marginBottom:6, lineHeight:1.4 }}>{t.title}</div>
                       <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
                         {priorityBadge(t.priority)}
-                        {t.assignee_name && <div style={{ display:'flex', alignItems:'center', gap:4 }}><Avatar name={t.assignee_name} size={18}/><span style={{ fontSize:11, color:'var(--text-2)' }}>{t.assignee_name}</span></div>}
+                        {canManage ? (
+                          <select value={t.assignee_id || ''} onChange={e=>updateTaskAssignee(t.id, e.target.value)} style={{ width:'auto', background:'var(--surface3)', border:'1px solid var(--border)', borderRadius:6, padding:'2px 4px', fontSize:11, cursor:'pointer' }}>
+                            <option value="">Unassigned</option>
+                            {(project.members||[]).map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+                          </select>
+                        ) : (
+                          t.assignee_name && <div style={{ display:'flex', alignItems:'center', gap:4 }}><Avatar name={t.assignee_name} size={18}/><span style={{ fontSize:11, color:'var(--text-2)' }}>{t.assignee_name}</span></div>
+                        )}
                       </div>
                       {t.due_date && <div style={{ fontSize:11, marginTop:8, color:new Date(t.due_date)<new Date()&&col!=='done'?'var(--danger)':'var(--text-3)', fontFamily:'Space Mono' }}>📅 {t.due_date}</div>}
                     </div>
@@ -798,8 +907,33 @@ function ProjectDetail({ projectId, onBack }) {
             </select>
           </Field>
           <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
-            <Btn variant="ghost" onClick={()=>setShowAddMember(false)}>Cancel</Btn>
+            <Btn variant="ghost" type="button" onClick={()=>setShowAddMember(false)}>Cancel</Btn>
             <Btn loading={saving}>Add Member</Btn>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Edit Project Modal */}
+      <Modal open={showEditProject} onClose={()=>setShowEditProject(false)} title="Edit Project">
+        <form onSubmit={updateProject}>
+          <Field label="Project Name *"><input value={editProjectForm.name} onChange={setEpf('name')} placeholder="Project name..." required /></Field>
+          <Field label="Description"><textarea value={editProjectForm.description} onChange={setEpf('description')} placeholder="Details..." rows={3} style={{ resize:'vertical' }} /></Field>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+            <Field label="Status">
+              <select value={editProjectForm.status} onChange={setEpf('status')}>
+                <option value="active">Active</option>
+                <option value="completed">Completed</option>
+                <option value="archived">Archived</option>
+              </select>
+            </Field>
+            <Field label="Deadline"><input type="date" value={editProjectForm.deadline} onChange={setEpf('deadline')} /></Field>
+          </div>
+          <div style={{ display:'flex', gap:10, justifyContent:'space-between', marginTop:8 }}>
+            <Btn variant="danger" type="button" onClick={deleteProject}>Delete Project</Btn>
+            <div style={{ display:'flex', gap:10 }}>
+              <Btn variant="ghost" type="button" onClick={()=>setShowEditProject(false)}>Cancel</Btn>
+              <Btn loading={saving}>Save Changes</Btn>
+            </div>
           </div>
         </form>
       </Modal>
