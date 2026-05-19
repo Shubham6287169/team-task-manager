@@ -243,6 +243,7 @@ const NAV = [
   { id:'dashboard', label:'Dashboard', icon:'◈' },
   { id:'projects', label:'Projects', icon:'⬡' },
   { id:'tasks', label:'My Tasks', icon:'◎' },
+  { id:'settings', label:'Settings', icon:'⚙' },
 ];
 
 function Shell({ children, page, setPage }) {
@@ -1023,6 +1024,144 @@ function TasksPage() {
   );
 }
 
+// ── Settings Page ──────────────────────────────────────────────────
+function SettingsPage() {
+  const { user, showToast } = useAuth();
+  const [activeTab, setActiveTab] = useState('profile');
+  const [darkMode, setDarkMode] = useState(false);
+
+  useEffect(() => {
+    setDarkMode(document.documentElement.classList.contains('light-mode') === false);
+  }, []);
+
+  const toggleDarkMode = () => {
+    if (darkMode) {
+      document.documentElement.classList.add('light-mode');
+      setDarkMode(false);
+    } else {
+      document.documentElement.classList.remove('light-mode');
+      setDarkMode(true);
+    }
+  };
+
+  const handleMockSave = (e) => {
+    e.preventDefault();
+    showToast('Settings saved successfully.', 'success');
+  };
+
+  return (
+    <div style={{ padding:28, maxWidth:1000 }}>
+      <div style={{ marginBottom:24 }}>
+        <h1 style={{ fontSize:22, fontWeight:700 }}>Settings & Features</h1>
+        <p style={{ color:'var(--text-2)', marginTop:4, fontSize:14 }}>Manage your account, preferences, and advanced features.</p>
+      </div>
+
+      <div style={{ display:'flex', gap:20, flexWrap:'wrap' }}>
+        {/* Sidebar */}
+        <div style={{ width: 220, display:'flex', flexDirection:'column', gap:4 }}>
+          {['profile', 'preferences', 'advanced', 'admin'].map(t => {
+            if (t === 'admin' && user.role !== 'admin') return null;
+            const labels = { profile:'Profile & Account', preferences:'Preferences', advanced:'Advanced Features', admin:'Admin Controls' };
+            return (
+              <button key={t} onClick={() => setActiveTab(t)} style={{ padding:'10px 14px', borderRadius:8, border:'none', background:activeTab===t?'var(--surface2)':'transparent', color:activeTab===t?'var(--text)':'var(--text-2)', textAlign:'left', fontWeight:activeTab===t?600:400, cursor:'pointer', transition:'all .15s' }}>
+                {labels[t]}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Content */}
+        <div style={{ flex:1, minWidth:300 }}>
+          {activeTab === 'profile' && (
+            <Card>
+              <h2 style={{ fontSize:16, marginBottom:16 }}>Profile Information</h2>
+              <form onSubmit={handleMockSave}>
+                <Field label="Full Name"><input defaultValue={user.name} /></Field>
+                <Field label="Email Address"><input type="email" defaultValue={user.email} disabled style={{ opacity:0.6 }} /></Field>
+                <Field label="New Password"><input type="password" placeholder="Leave blank to keep current" /></Field>
+                <Btn>Update Profile</Btn>
+              </form>
+            </Card>
+          )}
+
+          {activeTab === 'preferences' && (
+            <Card>
+              <h2 style={{ fontSize:16, marginBottom:16 }}>App Preferences</h2>
+              
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 0', borderBottom:'1px solid var(--border)' }}>
+                <div>
+                  <div style={{ fontWeight:600 }}>Dark Mode</div>
+                  <div style={{ fontSize:12, color:'var(--text-2)' }}>Toggle between light and dark themes.</div>
+                </div>
+                <Btn variant={darkMode ? "primary" : "secondary"} onClick={toggleDarkMode}>{darkMode ? 'Enabled' : 'Disabled'}</Btn>
+              </div>
+
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 0', borderBottom:'1px solid var(--border)' }}>
+                <div>
+                  <div style={{ fontWeight:600 }}>Email Alerts</div>
+                  <div style={{ fontSize:12, color:'var(--text-2)' }}>Receive notifications for task updates and deadlines.</div>
+                </div>
+                <Btn variant="secondary" type="button" onClick={() => showToast('Feature coming soon!')}>Configure</Btn>
+              </div>
+
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 0' }}>
+                <div>
+                  <div style={{ fontWeight:600 }}>Mobile Responsiveness</div>
+                  <div style={{ fontSize:12, color:'var(--text-2)' }}>Optimize layout for smaller screens. (Always enabled)</div>
+                </div>
+                <Btn variant="primary" disabled>Enabled</Btn>
+              </div>
+            </Card>
+          )}
+
+          {activeTab === 'advanced' && (
+            <Card>
+              <h2 style={{ fontSize:16, marginBottom:16 }}>Optional Advanced Member Features</h2>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))', gap:16 }}>
+                {[
+                  { title:'Time Tracking', desc:'Log hours spent on specific tasks.' },
+                  { title:'Calendar View', desc:'Visualize due dates in a monthly grid.' },
+                  { title:'Real-time Updates', desc:'Live sync via WebSockets.' },
+                  { title:'Upload Attachments', desc:'Add files and images to tasks.' },
+                  { title:'Task Tags/Categories', desc:'Organize tasks with custom labels.' },
+                ].map(f => (
+                  <div key={f.title} style={{ padding:14, background:'var(--surface2)', borderRadius:8, border:'1px solid var(--border)' }}>
+                    <div style={{ fontWeight:600, fontSize:14 }}>{f.title}</div>
+                    <div style={{ fontSize:12, color:'var(--text-2)', marginTop:4, marginBottom:10 }}>{f.desc}</div>
+                    <Btn size="sm" variant="ghost" type="button" onClick={() => showToast('Advanced feature requires upgrade.')}>Enable</Btn>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {activeTab === 'admin' && user.role === 'admin' && (
+            <Card>
+              <h2 style={{ fontSize:16, marginBottom:16 }}>Advanced Admin Features</h2>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))', gap:16 }}>
+                {[
+                  { title:'User Management', desc:'Add, edit, delete, and block users globally.' },
+                  { title:'Activity & Audit Logs', desc:'Track all system actions.' },
+                  { title:'AI Analytics', desc:'Generate insights on team performance.' },
+                  { title:'Export Reports', desc:'Download PDF/Excel progress reports.' },
+                  { title:'Backup & Restore', desc:'Manage database backups.' },
+                  { title:'API Settings', desc:'Manage API keys and webhooks.' },
+                ].map(f => (
+                  <div key={f.title} style={{ padding:14, background:'var(--surface2)', borderRadius:8, border:'1px solid var(--border)' }}>
+                    <div style={{ fontWeight:600, fontSize:14 }}>{f.title}</div>
+                    <div style={{ fontSize:12, color:'var(--text-2)', marginTop:4, marginBottom:10 }}>{f.desc}</div>
+                    <Btn size="sm" variant="secondary" type="button" onClick={() => showToast('Admin feature not fully implemented.')}>Manage</Btn>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── App Root ──────────────────────────────────────────────────────
 function App() {
   const { user } = useAuth();
@@ -1039,6 +1178,7 @@ function App() {
     if (page==='projects') return <ProjectsPage onOpenProject={openProject} />;
     if (page==='project' && projectId) return <ProjectDetail projectId={projectId} onBack={closeProject} />;
     if (page==='tasks') return <TasksPage />;
+    if (page==='settings') return <SettingsPage />;
     return null;
   };
 
