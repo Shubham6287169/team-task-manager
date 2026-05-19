@@ -32,6 +32,9 @@ class ProfileUpdate(BaseModel):
     name: Optional[str] = None
     password: Optional[str] = None
 
+class RoleUpdate(BaseModel):
+    role: str
+
 # Utils
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     if not hashed_password:
@@ -149,6 +152,40 @@ def get_me(current_user: dict = Depends(get_current_user)):
 def get_users(current_user: dict = Depends(get_current_user), db=Depends(get_db)):
     users = db.execute("SELECT id, name, email, role, avatar, created_at FROM users ORDER BY name ASC").fetchall()
     return [dict(u) for u in users]
+
+@router.put("/users/{user_id}/role")
+def update_user_role(user_id: int, role_update: RoleUpdate, current_user: dict = Depends(get_current_user), db=Depends(get_db)):
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    if role_update.role not in ["admin", "member"]:
+        raise HTTPException(status_code=400, detail="Invalid role.")
+    db.execute("UPDATE users SET role = ? WHERE id = ?", (role_update.role, user_id))
+    db.commit()
+    return {"message": "User role updated successfully"}
+
+@router.delete("/users/{user_id}")
+def delete_user(user_id: int, current_user: dict = Depends(get_current_user), db=Depends(get_db)):
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    # Prevent deleting oneself
+    if user_id == current_user["id"]:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account.")
+    db.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    db.commit()
+    return {"message": "User deleted successfully"}
+
+@router.get("/activity_logs")
+def get_activity_logs(current_user: dict = Depends(get_current_user), db=Depends(get_db)):
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    logs = db.execute("""
+        SELECT al.*, u.name as user_name, u.email as user_email
+        FROM activity_log al
+        LEFT JOIN users u ON u.id = al.user_id
+        ORDER BY al.created_at DESC
+        LIMIT 100
+    """).fetchall()
+    return [dict(l) for l in logs]
 
 @router.put("/profile")
 def update_profile(profile: ProfileUpdate, current_user: dict = Depends(get_current_user), db=Depends(get_db)):

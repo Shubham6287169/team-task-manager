@@ -1024,10 +1024,118 @@ function TasksPage() {
   );
 }
 
+// ── Admin Components ───────────────────────────────────────────────
+
+function AdminUserManagement({ onBack }) {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const { user: currentUser, showToast } = useAuth();
+
+  const loadUsers = () => {
+    apiFetch('/auth/users')
+      .then(setUsers)
+      .catch(e => showToast(e.message, 'error'))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { loadUsers(); }, []);
+
+  const updateRole = async (userId, role) => {
+    try {
+      await apiFetch(`/auth/users/${userId}/role`, { method: 'PUT', body: { role } });
+      showToast('User role updated.', 'success');
+      loadUsers();
+    } catch(e) { showToast(e.message, 'error'); }
+  };
+
+  const deleteUser = async (userId) => {
+    if (!confirm('Are you sure you want to delete this user globally? This cannot be undone.')) return;
+    try {
+      await apiFetch(`/auth/users/${userId}`, { method: 'DELETE' });
+      showToast('User deleted.', 'success');
+      loadUsers();
+    } catch(e) { showToast(e.message, 'error'); }
+  };
+
+  if (loading) return <div style={{ padding:40, textAlign:'center' }}><Spinner size={32} /></div>;
+
+  return (
+    <Card>
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:20 }}>
+        <button onClick={onBack} style={{ background:'none', border:'none', color:'var(--text-2)', cursor:'pointer', fontSize:14 }}>← Back</button>
+        <h2 style={{ fontSize:18, margin:0 }}>User Management</h2>
+      </div>
+      <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+        {users.map(u => (
+          <div key={u.id} style={{ display:'flex', alignItems:'center', gap:12, padding:14, background:'var(--surface2)', borderRadius:8, border:'1px solid var(--border)' }}>
+            <Avatar name={u.name} size={40} />
+            <div style={{ flex:1 }}>
+              <div style={{ fontWeight:600 }}>{u.name} {u.id === currentUser.id && '(You)'}</div>
+              <div style={{ fontSize:12, color:'var(--text-3)' }}>{u.email}</div>
+            </div>
+            <select 
+              value={u.role} 
+              onChange={e => updateRole(u.id, e.target.value)}
+              disabled={u.id === currentUser.id}
+              style={{ padding:'4px 8px', borderRadius:6, background:'var(--surface3)', border:'1px solid var(--border)' }}
+            >
+              <option value="member">Member</option>
+              <option value="admin">Admin</option>
+            </select>
+            <Btn size="sm" variant="danger" disabled={u.id === currentUser.id} onClick={() => deleteUser(u.id)}>Delete</Btn>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function AdminAuditLogs({ onBack }) {
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const { showToast } = useAuth();
+
+  useEffect(() => {
+    apiFetch('/auth/activity_logs')
+      .then(setLogs)
+      .catch(e => showToast(e.message, 'error'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div style={{ padding:40, textAlign:'center' }}><Spinner size={32} /></div>;
+
+  return (
+    <Card>
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:20 }}>
+        <button onClick={onBack} style={{ background:'none', border:'none', color:'var(--text-2)', cursor:'pointer', fontSize:14 }}>← Back</button>
+        <h2 style={{ fontSize:18, margin:0 }}>Activity & Audit Logs</h2>
+      </div>
+      <div style={{ maxHeight: 600, overflowY: 'auto', display:'flex', flexDirection:'column', gap:8 }}>
+        {logs.length === 0 && <div style={{ padding:20, textAlign:'center', color:'var(--text-3)' }}>No logs found.</div>}
+        {logs.map(log => (
+          <div key={log.id} style={{ padding:12, background:'var(--surface2)', borderRadius:8, border:'1px solid var(--border)', fontSize:13 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
+              <span style={{ fontWeight:600, color:'var(--text)' }}>{log.user_name || 'System'} <span style={{ color:'var(--text-3)', fontWeight:400 }}>({log.user_email || 'N/A'})</span></span>
+              <span style={{ fontFamily:'Space Mono', color:'var(--text-3)', fontSize:11 }}>{new Date(log.created_at).toLocaleString()}</span>
+            </div>
+            <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+              <Badge label={log.action} color={log.action.includes('delete')?'red':log.action.includes('create')?'green':'blue'} />
+              <span style={{ color:'var(--text-2)' }}>
+                {log.entity_type} {log.entity_id ? `#${log.entity_id}` : ''}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 // ── Settings Page ──────────────────────────────────────────────────
 function SettingsPage() {
   const { user, showToast } = useAuth();
   const [activeTab, setActiveTab] = useState('profile');
+  const [adminView, setAdminView] = useState(null);
   const [darkMode, setDarkMode] = useState(false);
 
   useEffect(() => {
@@ -1063,7 +1171,7 @@ function SettingsPage() {
             if (t === 'admin' && user.role !== 'admin') return null;
             const labels = { profile:'Profile & Account', preferences:'Preferences', advanced:'Advanced Features', admin:'Admin Controls' };
             return (
-              <button key={t} onClick={() => setActiveTab(t)} style={{ padding:'10px 14px', borderRadius:8, border:'none', background:activeTab===t?'var(--surface2)':'transparent', color:activeTab===t?'var(--text)':'var(--text-2)', textAlign:'left', fontWeight:activeTab===t?600:400, cursor:'pointer', transition:'all .15s' }}>
+              <button key={t} onClick={() => { setActiveTab(t); setAdminView(null); }} style={{ padding:'10px 14px', borderRadius:8, border:'none', background:activeTab===t?'var(--surface2)':'transparent', color:activeTab===t?'var(--text)':'var(--text-2)', textAlign:'left', fontWeight:activeTab===t?600:400, cursor:'pointer', transition:'all .15s' }}>
                 {labels[t]}
               </button>
             )
@@ -1136,25 +1244,37 @@ function SettingsPage() {
           )}
 
           {activeTab === 'admin' && user.role === 'admin' && (
-            <Card>
-              <h2 style={{ fontSize:16, marginBottom:16 }}>Advanced Admin Features</h2>
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))', gap:16 }}>
-                {[
-                  { title:'User Management', desc:'Add, edit, delete, and block users globally.' },
-                  { title:'Activity & Audit Logs', desc:'Track all system actions.' },
-                  { title:'AI Analytics', desc:'Generate insights on team performance.' },
-                  { title:'Export Reports', desc:'Download PDF/Excel progress reports.' },
-                  { title:'Backup & Restore', desc:'Manage database backups.' },
-                  { title:'API Settings', desc:'Manage API keys and webhooks.' },
-                ].map(f => (
-                  <div key={f.title} style={{ padding:14, background:'var(--surface2)', borderRadius:8, border:'1px solid var(--border)' }}>
-                    <div style={{ fontWeight:600, fontSize:14 }}>{f.title}</div>
-                    <div style={{ fontSize:12, color:'var(--text-2)', marginTop:4, marginBottom:10 }}>{f.desc}</div>
-                    <Btn size="sm" variant="secondary" type="button" onClick={() => showToast('Admin feature not fully implemented.')}>Manage</Btn>
+            <>
+              {!adminView && (
+                <Card>
+                  <h2 style={{ fontSize:16, marginBottom:16 }}>Advanced Admin Features</h2>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))', gap:16 }}>
+                    {[
+                      { id:'users', title:'User Management', desc:'Add, edit, delete, and block users globally.' },
+                      { id:'logs', title:'Activity & Audit Logs', desc:'Track all system actions.' },
+                      { id:'ai', title:'AI Analytics', desc:'Generate insights on team performance.' },
+                      { id:'export', title:'Export Reports', desc:'Download PDF/Excel progress reports.' },
+                      { id:'backup', title:'Backup & Restore', desc:'Manage database backups.' },
+                      { id:'api', title:'API Settings', desc:'Manage API keys and webhooks.' },
+                    ].map(f => (
+                      <div key={f.title} style={{ padding:14, background:'var(--surface2)', borderRadius:8, border:'1px solid var(--border)' }}>
+                        <div style={{ fontWeight:600, fontSize:14 }}>{f.title}</div>
+                        <div style={{ fontSize:12, color:'var(--text-2)', marginTop:4, marginBottom:10 }}>{f.desc}</div>
+                        <Btn size="sm" variant="secondary" type="button" onClick={() => {
+                          if (f.id === 'users' || f.id === 'logs') {
+                            setAdminView(f.id);
+                          } else {
+                            showToast('Admin feature not fully implemented.');
+                          }
+                        }}>Manage</Btn>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </Card>
+                </Card>
+              )}
+              {adminView === 'users' && <AdminUserManagement onBack={() => setAdminView(null)} />}
+              {adminView === 'logs' && <AdminAuditLogs onBack={() => setAdminView(null)} />}
+            </>
           )}
         </div>
       </div>

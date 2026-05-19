@@ -27,8 +27,8 @@ Team Task is a full-stack project and task management platform built for teams.
 It allows admins and members to collaborate on projects, assign tasks, track
 progress through a Kanban board, and view real-time dashboard metrics.
 
-The backend is built with Node.js + Express + SQLite (via better-sqlite3),
-and the frontend is a React SPA served directly from the Express server.
+The backend is built with Python + FastAPI + SQLite,
+and the frontend is a React SPA served directly from the FastAPI app.
 
 
 ================================================================================
@@ -71,6 +71,11 @@ VIEWS
   - Kanban board (4-column drag-free board)
   - Team members tab with role management
   - My Tasks page (all tasks assigned to current user)
+  - Settings & Features page (Admin Controls, User Management, Audit Logs)
+
+ADMIN CONTROLS
+  - User Management: Add, edit, delete, and block users globally
+  - Activity & Audit Logs: Track system-wide actions (create/update/delete)
 
 DASHBOARD METRICS
   - Total tasks, overdue count, active projects, completed tasks
@@ -84,13 +89,13 @@ DASHBOARD METRICS
 ================================================================================
 
 BACKEND
-  - Runtime:      Node.js 18+
-  - Framework:    Express 4.18
-  - Database:     SQLite via better-sqlite3 9.x (file-based, zero config)
-  - Auth:         JSON Web Tokens (jsonwebtoken 9.x)
-  - Passwords:    bcryptjs 2.x
-  - Validation:   express-validator 7.x
-  - CORS:         cors 2.x
+  - Runtime:      Python 3.10+
+  - Framework:    FastAPI
+  - Database:     SQLite3 (built-in, file-based, zero config)
+  - Auth:         JSON Web Tokens (PyJWT)
+  - Passwords:    bcrypt
+  - Validation:   Pydantic
+  - CORS:         FastAPI CORSMiddleware
 
 FRONTEND
   - Library:      React 18 (via CDN — no build step needed)
@@ -110,25 +115,19 @@ DEPLOYMENT
 ================================================================================
 
 Team Task/
-├── server.js              # Express app entry point
-├── package.json           # Dependencies and scripts
+├── main.py                # FastAPI app entry point
+├── requirements.txt       # Python dependencies
 ├── railway.toml           # Railway deployment config
 ├── .env.example           # Environment variable template
 ├── .gitignore
 │
-├── db/
-│   └── database.js        # SQLite init, schema, triggers
+├── database.py            # SQLite init, schema, triggers
+├── auth.py                # Auth, user management & logs routes
+├── projects.py            # Projects CRUD & member routes
+├── tasks.py               # Tasks CRUD & dashboard routes
 │
-├── middleware/
-│   └── auth.js            # JWT verify, requireAdmin, requireProjectAccess
-│
-├── routes/
-│   ├── auth.js            # POST /signup, /login; GET /me, /users; PUT /profile
-│   ├── projects.js        # CRUD projects + member management
-│   └── tasks.js           # CRUD tasks + comments + dashboard
-│
-├── public/
-│   └── index.html         # Full React SPA (single file, CDN React)
+├── index.html             # Full React SPA (single file, CDN React)
+├── app.jsx                # React frontend code (JSX, Babel standalone)
 │
 └── data/                  # Created at runtime — holds taskmanager.db
     └── taskmanager.db     # SQLite database (auto-created on first run)
@@ -139,34 +138,37 @@ Team Task/
 ================================================================================
 
 PREREQUISITES
-  - Node.js 18 or higher  →  https://nodejs.org/
-  - npm (comes with Node)
+  - Python 3.10 or higher
+  - pip
 
 STEPS
 
   1. Clone or extract the project folder:
        cd "Team Task"
 
-  2. Install dependencies:
-       npm install
+  2. Create and activate a virtual environment:
+       python -m venv venv
+       source venv/bin/activate    # Linux/Mac
+       venv\Scripts\activate       # Windows
 
-  3. Copy the example env file and configure it:
+  3. Install dependencies:
+       pip install -r requirements.txt
+
+  4. Copy the example env file and configure it:
        cp .env.example .env
        # Edit .env with your preferred settings (see Section 6)
 
-  4. Start the development server:
-       npm run dev       # uses nodemon (auto-restart on file changes)
-       # OR
-       npm start         # plain node
+  5. Start the development server:
+       uvicorn main:app --reload
 
-  5. Open your browser at:
-       http://localhost:3000
+  6. Open your browser at:
+       http://localhost:8000
 
   The database (data/taskmanager.db) is auto-created on first startup.
   No migrations to run — schema is applied automatically.
 
   CREATE YOUR FIRST ADMIN ACCOUNT:
-    - Go to http://localhost:3000
+    - Go to http://localhost:8000
     - Click "Sign Up"
     - Select "Admin" role
     - Sign up — you now have full access to all projects
@@ -178,7 +180,7 @@ STEPS
 
 Variable         Default                          Description
 ---------------------------------------------------------------------------
-PORT             3000                             Server port
+PORT             8000                             Server port
 NODE_ENV         development                      Environment flag
 JWT_SECRET       team-task-secret-...             Secret key for signing JWTs
                                                   ⚠ CHANGE IN PRODUCTION!
@@ -186,7 +188,7 @@ DB_PATH          ./data/taskmanager.db            Path to SQLite database file
 FRONTEND_URL     *                                CORS allowed origin
 
 Example .env:
-  PORT=3000
+  PORT=8000
   NODE_ENV=production
   JWT_SECRET=my-super-secret-production-key-abc123
   DB_PATH=./data/taskmanager.db
@@ -216,7 +218,9 @@ PUT    /auth/profile          Update profile (auth required)
   Body: { name?, password? }
 
 GET    /auth/users            List all users (auth required)
-
+PUT    /auth/users/:id/role   Update user role (admin required)
+DELETE /auth/users/:id        Delete user (admin required)
+GET    /auth/activity_logs    List recent system activity (admin required)
 
 --- PROJECTS ---
 
@@ -382,13 +386,13 @@ STEP-BY-STEP RAILWAY DEPLOYMENT
   3. Click "New Project" → "Deploy from GitHub repo"
      Select your repository.
 
-  4. Railway auto-detects Node.js and runs `npm start`.
+  4. Railway auto-detects Python and runs uvicorn (via nixpacks/railway.toml).
      The railway.toml config sets the health check path.
 
   5. Add environment variables in Railway dashboard → Variables tab:
        JWT_SECRET    = (generate a random 32+ char string)
        NODE_ENV      = production
-       PORT          = 3000   (or let Railway auto-assign)
+       PORT          = 8000   (or let Railway auto-assign)
 
   6. Add a Volume for database persistence:
        - Railway dashboard → your service → Volumes tab
@@ -439,9 +443,9 @@ ROLE SETUP FOR A TEAM
 12. TROUBLESHOOTING
 ================================================================================
 
-"Module not found: better-sqlite3"
-  → Run: npm install
-  → If on Windows, you may need: npm install --build-from-source
+"ModuleNotFoundError: No module named 'fastapi'"
+  → Run: pip install -r requirements.txt
+  → Ensure you have activated your virtual environment (venv).
 
 Database permission error
   → Ensure the ./data/ directory is writable
@@ -453,7 +457,7 @@ JWT token errors (401 Unauthorized)
 
 Port already in use
   → Change PORT in .env
-  → Or kill existing process: lsof -ti :3000 | xargs kill
+  → Or kill existing process: lsof -ti :8000 | xargs kill
 
 CORS errors in browser
   → Set FRONTEND_URL in .env to your exact frontend origin
